@@ -8,6 +8,8 @@
 #' values of these parameters
 #' @param inputs Character vector. Input functions or forcings. They are excluded from
 #' the computation of sensitivities.
+#' @param reduce Logical. Attempts to determine vanishing sensitivities, removes their
+#' equations and replaces their right-hand side occurences by 0.
 #' @details The sensitivity equations are ODEs that are derived from the original ODE f.
 #' They describe the sensitivity of the solution curve with respect to parameters like 
 #' initial values and other parameters contained in f. These equtions are also useful
@@ -22,51 +24,64 @@
 #' @example inst/examples/example2.R
 #' @example inst/examples/example3.R
 #' @export
-sensitivitiesSymb <- function(f, states = names(f), parameters = NULL, inputs = NULL) {
+sensitivitiesSymb <- function(f, states = names(f), parameters = NULL, inputs = NULL, reduce = FALSE) {
   
-  variables0 <- variables <- names(f)
-  parameters0 <- parameters
-  symbols <- getSymbols(f)
-  if(is.null(parameters)) parameters0 <- pars <- symbols[!symbols%in%c(variables, inputs)]
-    
+  variables <- names(f)
+  states <- states[!states%in%inputs]
   
-  fun <- f
-  Dyf <- jacobianSymb(f)
+  if(is.null(parameters)) {
+    pars <- getSymbols(f, exclude=c(variables, inputs, "time"))
+  } else {
+    pars <- parameters[!parameters%in%inputs]
+  }
+  
+  Dyf <- jacobianSymb(f, variables)
   Dpf <- jacobianSymb(f, pars)
-  
-  
-  f <- lapply(fun, function(felement) parse(text=felement))
   
   df <- length(f)
   dv <- length(variables)
+  ds <- length(states)
   dp <- length(pars)
   
-  # generate sensitivity variable names
-  mygridY0 <- expand.grid(variables, variables)
-  mygridP <- expand.grid(variables, pars)
-  sensParVariablesY0 <- apply(mygridY0, 1, paste, collapse=".")
-  sensParVariablesP <- apply(mygridP, 1, paste, collapse=".")
+  # generate sensitivity variable names and names with zero entries
+  mygridY0 <- expand.grid.alt(variables, states)
+  mygridP <- expand.grid.alt(variables, pars)
+  sensParVariablesY0 <- apply(mygridY0, 1, paste, collapse = ".")
+  sensParVariablesP <- apply(mygridP, 1, paste, collapse = ".")
   
   # Write sensitivity equations in matrix form
-  Dy0y <- matrix(sensParVariablesY0, ncol=dv, nrow=dv)
-  Dpy <- matrix(sensParVariablesP, ncol=dp, nrow=dv)
-  gl <- c(as.vector(prodSymb(matrix(Dyf, ncol=dv), Dy0y)),
-          as.vector(sumSymb(prodSymb(matrix(Dyf,ncol=dv), Dpy), matrix(Dpf, nrow=dv))))
+  Dy0y <- matrix(sensParVariablesY0, ncol = ds, nrow = dv)
+  Dpy <- matrix(sensParVariablesP, ncol = dp, nrow = dv)
   
   
+  gl <- c(as.vector(prodSymb(matrix(Dyf, ncol = dv), Dy0y)), 
+          as.vector(sumSymb(prodSymb(matrix(Dyf, ncol = dv), Dpy), matrix(Dpf, nrow = dv))))
+ 
   newfun <- gl
-  newvariables <- c(sensParVariablesY0, sensParVariablesP)
-  
+  newvariables.grid <- expand.grid.alt(variables, c(states, pars))
+  newvariables <- apply(newvariables.grid, 1, paste, collapse=".")
   names(newfun) <- newvariables
   
+  # Reduce the sensitivities
+  vanishing <- c(sensParVariablesY0, sensParVariablesP[Dpf == "0"])
+  if(reduce) {
+    newfun <- reduceSensitivities(newfun, vanishing)
+    is.zero.sens <- newfun == "0"
+  } else {
+    is.zero.sens <- rep(FALSE, length(newfun))
+  }
+  newfun <- newfun[!is.zero.sens]
+  
+  
+    
   # Append initial values
   initials <- rep(0, length(newfun))
-  names(initials) <- newvariables
-  ones <- which(apply(mygridY0, 1, function(row) row[1] == row[2]))
+  names(initials) <- newvariables[!is.zero.sens]
+  ones <- which(apply(newvariables.grid, 1, function(row) row[1] == row[2]))
   initials[newvariables[ones]] <- 1
   
   # Compute wrss
-  if(is.null(parameters)) pars <- getSymbols(c(f, names(f)), exclude=inputs)
+  pars <- c(pars, states)
   
   statesD <- paste0(states, "D")
   weightsD <- paste0("weight", statesD)
@@ -77,12 +92,14 @@ sensitivitiesSymb <- function(f, states = names(f), parameters = NULL, inputs = 
     
   sensitivities <- lapply(pars, function(p) paste0(states, ".", p))
   names(sensitivities) <- pars
-  
+    
   grad <- sapply(pars, function(p) paste0(paste("2*", res, "*", sensitivities[[p]]), collapse=" + "))
   names(grad) <- paste("chi", pars, sep=".")
+  grad <- replaceSymbols(newvariables[is.zero.sens], "0", grad)
   
   attr(newfun, "chi") <- chi
   attr(newfun, "grad") <- grad
+  attr(newfun, "outputs") <- structure(rep(0, length(which(is.zero.sens))), names = newvariables[is.zero.sens])
   attr(newfun, "forcings") <- c(statesD, weightsD)
   attr(newfun, "yini") <- initials
     
@@ -91,6 +108,8 @@ sensitivitiesSymb <- function(f, states = names(f), parameters = NULL, inputs = 
   
   
 }
+
+
 
 
 #' Compute adjoint equations of a function symbolically

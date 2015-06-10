@@ -4,7 +4,7 @@
 \alias{loadDLL}
 \title{Dynamically load DLL with automatic unloading of conflicting DLLs}
 \usage{
-loadDLL(func, cfunction = "deriv")
+loadDLL(func, cfunction = "derivs")
 }
 \arguments{
 \item{func}{result from funC(), contains the information about the DLL name to be loaded}

@@ -4,7 +4,8 @@
 \alias{sensitivitiesSymb}
 \title{Compute sensitivity equations of a function symbolically}
 \usage{
-sensitivitiesSymb(f, states = names(f), parameters = NULL, inputs = NULL)
+sensitivitiesSymb(f, states = names(f), parameters = NULL, inputs = NULL,
+  reduce = FALSE)
 }
 \arguments{
 \item{f}{named vector of type character, the functions}
@@ -17,6 +18,9 @@ values of these parameters}
 
 \item{inputs}{Character vector. Input functions or forcings. They are excluded from
 the computation of sensitivities.}
+
+\item{reduce}{Logical. Attempts to determine vanishing sensitivities, removes their
+equations and replaces their right-hand side occurences by 0.}
 }
 \value{
 Named vector of type character with the sensitivity equations. Furthermore,
@@ -109,7 +113,7 @@ grad <- attr(f_s, "grad")
 forcings <- attr(f_s, "forcings")
 
 # Generate ODE function
-func <- funC(f = c(f, f_s, chi, grad), forcings = forcings)
+func <- funC(f = c(f, f_s, chi, grad), forcings = forcings, fcontrol = "nospline")
 
 # Initialize times, states, parameters
 times <- seq(0, 15, by = .1)
