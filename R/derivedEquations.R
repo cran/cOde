@@ -66,7 +66,7 @@ sensitivitiesSymb <- function(f, states = names(f), parameters = NULL, inputs = 
   vanishing <- c(sensParVariablesY0, sensParVariablesP[Dpf == "0"])
   if(reduce) {
     newfun <- reduceSensitivities(newfun, vanishing)
-    is.zero.sens <- newfun == "0"
+    is.zero.sens <- names(newfun) %in% attr(newfun,"is.zero")
   } else {
     is.zero.sens <- rep(FALSE, length(newfun))
   }

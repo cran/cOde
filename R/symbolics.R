@@ -79,7 +79,7 @@ replaceOperation <- function(what, by, x) {
   while(!exit) {
     
     parsed <- parse(text=x, keep.source = TRUE)
-    parsData <- getParseData(parsed)
+    parsData <- utils::getParseData(parsed)
     pres <- parsData[parsData$terminal==TRUE,]
     
     
@@ -210,6 +210,7 @@ replaceOperation <- function(what, by, x) {
 #' jacobianSymb(c(A="A*B", B="A+B"))
 #' jacobianSymb(c(x="A*B", y="A+B"), c("A", "B"))
 #' @export
+#' @importFrom stats D splinefun
 jacobianSymb <- function(f, variables=NULL) {
   
   if(is.null(variables)) variables <- names(f)
@@ -260,8 +261,8 @@ jacobianSymb <- function(f, variables=NULL) {
 getSymbols <- function(char, exclude = NULL) {
   
   char <- char[char!="0"]
-  out <- parse(text=char)
-  out <- getParseData(out)
+  out <- parse(text=char, keep.source = TRUE)
+  out <- utils::getParseData(out)
   names <- unique(out$text[out$token == "SYMBOL"])
   if(!is.null(exclude)) names <- names[!names%in%exclude]
   return(names)

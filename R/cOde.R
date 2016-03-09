@@ -20,6 +20,7 @@
 #' @param precision Numeric. Only used when \code{fcontrol = "einspline"}.
 #' @param modelname Character. The C file is generated in the working directory and is named <modelname>.c.
 #' If \code{NULL}, a random name starting with ".f" is chosen, i.e. the file is hidden on a UNIX system.
+#' @param verbose Print compiler output to R command line.
 #' @details The function replaces variables by arrays \code{y[i]}, etc. and replaces "^" by pow() 
 #' in order to have the correct C syntax. The file name of the C-File is derived from \code{f}. 
 #' I.e. \code{funC(abc, ...} will generate a file abc.c in the current directory. 
@@ -45,12 +46,15 @@
 #' odeC(yini, times, func, parms)
 #' }
 #' @export
+#' @importFrom utils packageVersion
 funC <- function(f, forcings=NULL, outputs=NULL, 
                  jacobian=c("none", "full", "inz.lsodes", "jacvec.lsodes"), 
                  rootfunc = NULL, boundary= NULL, 
                  compile = TRUE, fcontrol = c("nospline", "einspline"),
-                 nGridpoints = 500, precision=1e-5, modelname = NULL) {
+                 nGridpoints = 500, precision=1e-5, modelname = NULL,
+                 verbose = FALSE) {
   
+  f <- unclass(f)
   constraints <- NULL # Might be an interesting option in the future
   myattr <- attributes(f)
   equations <- f
@@ -331,9 +335,12 @@ funC <- function(f, forcings=NULL, outputs=NULL,
   ## ----------- compile C code and load shared object file---------
   
   if(compile & fcontrol == "nospline") 
-    system(paste0(R.home(component="bin"), "/R CMD SHLIB ", filename))
+    shlibOut <- system(paste0(R.home(component="bin"), "/R CMD SHLIB ", filename), intern = TRUE)
   if(compile & fcontrol == "einspline") 
-    system(paste0(R.home(component="bin"), "/R CMD SHLIB ", filename, " -leinspline"))
+    shlibOut <- system(paste0(R.home(component="bin"), "/R CMD SHLIB ", filename, " -leinspline"), intern = TRUE)
+  if (verbose) {
+    cat(shlibOut)
+  }
   
   .so <- .Platform$dynlib.ext
   soExists <- file.exists(paste0(dllname, .so))
@@ -381,8 +388,9 @@ loadDLL <- function(func, cfunction="derivs") {
     dyn.load(paste0(func, .so))
     cat("Shared object is loaded and ready to use\n")
   } else if((checkDLL$package)[[1]] != func) {
-    warning("Conflicting shared object was unloaded and new one is loaded")
-    dyn.unload(paste0((checkDLL$package)[[1]], .so))
+    test <- try(dyn.unload(paste0((checkDLL$package)[[1]], .so)), silent = TRUE)
+    if(!inherits(test, "try-error")) 
+      warning("Conflicting shared object was unloaded and new one is loaded")
     dyn.load(paste0(func, .so))
   }
   
@@ -517,8 +525,8 @@ odeC <- function(y, times, func, parms, ...) {
   
   out <- do.call(deSolve::ode, arglist)
   out.index <- unique(c(which.times[which.times <= nrow(out)], nrow(out)))
-  out <- out[out.index, ]
-
+  out <- matrix(out[out.index, ], nrow = length(out.index), dimnames = list(NULL, colnames(out)))
+  
   return(out)
   
   

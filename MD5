@@ -1,11 +1,9 @@
-3aaa06a607cceeba527cf41be7062a4b *DESCRIPTION
-3fa8723f7ebb273209e9cf0551fc1ee1 *NAMESPACE
-cbbf81281c6cf6d39ec6249440b4899d *R/cOde.R
-a3b040d0b107ea5d8a6e11383aa5d710 *R/derivedEquations.R
-9ab7c7b3b1a8382b0ff7e9e84ce952e8 *R/symbolics.R
+29397a99827bf4538ab665078383a8d5 *DESCRIPTION
+9bf2f800db3e931967ba28a844359d8f *NAMESPACE
+c9e5442d49e6cc403cf554c2bb6558c2 *R/cOde.R
+657c410201dd296b63fb3b95a2aad0cf *R/derivedEquations.R
+0ffcc17d6d6c520913374dafbd312760 *R/symbolics.R
 f9609bbb5736aa62fecf1efd8966ed91 *R/tools.R
-5d34ec86da1adf8372c37a480a8cb890 *data/forcData.rda
-e6ae55e2b70c957d113ea32cfa00f200 *data/oxygenData.rda
 b78b783bd566e61827ceea8c96827b64 *inst/code/splineCreateEvaluate.c
 3a589ea9597afcfc8714a476dbef39b0 *inst/examples/example1.R
 22dbd4ed08e2769f50fbef494436da4a *inst/examples/example2.R
@@ -17,7 +15,7 @@ f74be83526074a345eaa5a9b9b6f250c *man/adjointSymb.Rd
 2234d1d471fddd17b877e92efa6a5c5f *man/bvptwpC.Rd
 ae62deeceab92cfebfe9d02ffb1826ad *man/cOde-package.Rd
 890cfb4cb18770f48dbc034b1fa8b380 *man/forcData.Rd
-b4066a7a5bcd12dd79f3520fa0519bff *man/funC.Rd
+b58f4b2caf2e70e1870f9727f23fb078 *man/funC.Rd
 9d810afea00798b2b7235de1a54c8f24 *man/getSymbols.Rd
 c33f5c24d71d3dfb2c3d5a53c98c2bdd *man/jacobianSymb.Rd
 8b57f6c33ec2799f705f032598c17c37 *man/loadDLL.Rd
