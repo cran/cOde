@@ -46,7 +46,6 @@
 #' odeC(yini, times, func, parms)
 #' }
 #' @export
-#' @importFrom utils packageVersion
 funC <- function(f, forcings=NULL, outputs=NULL, 
                  jacobian=c("none", "full", "inz.lsodes", "jacvec.lsodes"), 
                  rootfunc = NULL, boundary= NULL, 
@@ -386,11 +385,12 @@ loadDLL <- function(func, cfunction="derivs") {
   checkDLL <- try(getNativeSymbolInfo(cfunction), silent=TRUE)
   if(inherits(checkDLL, "try-error")) {
     dyn.load(paste0(func, .so))
-    cat("Shared object is loaded and ready to use\n")
+    #cat("Shared object is loaded and ready to use\n")
+  } else if ((is.null(checkDLL$package))) {
+    # We are on Windows (always overload)
+    dyn.load(paste0(func, .so))
   } else if((checkDLL$package)[[1]] != func) {
-    test <- try(dyn.unload(paste0((checkDLL$package)[[1]], .so)), silent = TRUE)
-    if(!inherits(test, "try-error")) 
-      warning("Conflicting shared object was unloaded and new one is loaded")
+    # We are on Unix
     dyn.load(paste0(func, .so))
   }
   
@@ -411,6 +411,7 @@ loadDLL <- function(func, cfunction="derivs") {
 #'   data.frame(name = "b", time = c(0, 5, 10), value = c(1, 3, 6)))
 #' forc <- setForcings(func, forcData) 
 #' @export
+#' @importFrom utils packageVersion
 setForcings <- function(func, forcings) {
   
   #loadDLL(func)
