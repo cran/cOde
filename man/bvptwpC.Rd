@@ -61,7 +61,7 @@ bound <- data.frame(
 )
 
 # Generate ODE function
-func <- funC(f, jacobian="full", boundary = bound)
+func <- funC(f, jacobian="full", boundary = bound, modelname = "example4")
 
 # Initialize times, states, parameters and forcings
 times <- seq(0, 15, by = .1)
@@ -97,4 +97,3 @@ legend("right", legend = c("build_O3", "decay_O3"), lty=1, col=1:2)
 
 }
 }
-
