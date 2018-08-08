@@ -8,6 +8,12 @@
 #' values of these parameters
 #' @param inputs Character vector. Input functions or forcings. They are excluded from
 #' the computation of sensitivities.
+#' @param events data.frame of events with columns "var" (character, the name of the state to be
+#' affected), "time" (numeric or character, time point), 
+#' "value" (numeric or character, value), "method" (character, either
+#' "replace" or "add"). See \link[deSolve]{events}.
+#' Within \code{sensitivitiesSymb()} a \code{data.frame} of additional events is generated to 
+#' reset the sensitivities appropriately, depending on the event method. 
 #' @param reduce Logical. Attempts to determine vanishing sensitivities, removes their
 #' equations and replaces their right-hand side occurences by 0.
 #' @details The sensitivity equations are ODEs that are derived from the original ODE f.
@@ -25,16 +31,22 @@
 #' @example inst/examples/example2_sundials.R
 #' @example inst/examples/example3.R
 #' @export
-sensitivitiesSymb <- function(f, states = names(f), parameters = NULL, inputs = NULL, reduce = FALSE) {
+sensitivitiesSymb <- function(f, states = names(f), parameters = NULL, inputs = NULL, events = NULL, reduce = FALSE) {
   
   variables <- names(f)
   states <- states[!states%in%inputs]
   
-  if(is.null(parameters)) {
-    pars <- getSymbols(f, exclude=c(variables, inputs, "time"))
+  if (is.null(parameters)) {
+    pars <- getSymbols(c(f,
+                         as.character(events[["value"]]),
+                         as.character(events[["time"]])),
+                       exclude = c(variables, inputs, "time"))
   } else {
     pars <- parameters[!parameters%in%inputs]
   }
+  
+  if (length(states) == 0 & length(pars) == 0)
+    stop("Attempt to compute sensitivities although both states and parameters had length 0.")
   
   Dyf <- jacobianSymb(f, variables)
   Dpf <- jacobianSymb(f, pars)
@@ -44,35 +56,98 @@ sensitivitiesSymb <- function(f, states = names(f), parameters = NULL, inputs = 
   ds <- length(states)
   dp <- length(pars)
   
-  # generate sensitivity variable names and names with zero entries
-  mygridY0 <- expand.grid.alt(variables, states)
-  mygridP <- expand.grid.alt(variables, pars)
-  sensParVariablesY0 <- apply(mygridY0, 1, paste, collapse = ".")
-  sensParVariablesP <- apply(mygridP, 1, paste, collapse = ".")
-
-  # Write sensitivity equations in matrix form
-  Dy0y <- matrix(sensParVariablesY0, ncol = ds, nrow = dv)
-  Dpy <- matrix(sensParVariablesP, ncol = dp, nrow = dv)
+  # generate sensitivity variable names and names with zero entries then
+  # write sensitivity equations in matrix form
+  Dy0y <- Dpy <- NULL
+  sensParVariablesY0 <- sensParVariablesP <- NULL
+  
+  if (ds > 0) {
+    mygridY0 <- expand.grid.alt(variables, states)
+    sensParVariablesY0 <- apply(mygridY0, 1, paste, collapse = ".")
+    Dy0y <- matrix(sensParVariablesY0, ncol = ds, nrow = dv)
+  }
+  
+  if (dp > 0) {
+    mygridP <- expand.grid.alt(variables, pars)
+    sensParVariablesP <- apply(mygridP, 1, paste, collapse = ".")
+    Dpy <- matrix(sensParVariablesP, ncol = dp, nrow = dv)
+  }
   
   
-  gl <- c(as.vector(prodSymb(matrix(Dyf, ncol = dv), Dy0y)), 
-          as.vector(sumSymb(prodSymb(matrix(Dyf, ncol = dv), Dpy), matrix(Dpf, nrow = dv))))
- 
+  gl <- NULL
+  if (!is.null(Dy0y)) {
+    gl <- c(gl, as.vector(prodSymb(matrix(Dyf, ncol = dv), Dy0y)))
+  }
+  if (!is.null(Dpy)) {
+    gl <- c(gl, as.vector(sumSymb(prodSymb(matrix(Dyf, ncol = dv), Dpy), matrix(Dpf, nrow = dv))))
+  }
+  
   newfun <- gl
   newvariables.grid <- expand.grid.alt(variables, c(states, pars))
   newvariables <- apply(newvariables.grid, 1, paste, collapse=".")
   names(newfun) <- newvariables
   
+  # Compute list of new events
+  # var.p, t_var, 0 (if replace or add)
+  # var.p_var, t_var, 1 (if replace or add)
+  # x.t_var, t_var, f.var (if replace or add)
+  events.addon <- NULL
+  if (!is.null(events)) {
+    events.addon <- do.call(rbind, lapply(1:nrow(events), function(i) {
+      # Get variable, time and value
+      var <- as.character(events[["var"]][i])
+      tvar <- intersect(getSymbols(as.character(events[["time"]][i])), parameters)
+      eventpar <- intersect(getSymbols(as.character(events[["value"]][i])), parameters)
+      # Events for sensitivities with respect to time parameter, first
+      x.tvar <- NULL
+      if (length(tvar) > 0) {
+        statesNoVar <- setdiff(states, var)
+        x.tvar <- rbind(
+          data.frame(var = paste(statesNoVar, tvar, sep = "."),
+                     time = events[["time"]][i],
+                     value = switch(as.character(events[["method"]][i]),
+                                    replace = paste0("(", jacobianSymb(f[statesNoVar], var), ") * (", as.character(events[["var"]][i]), " - ", as.character(events[["value"]][i]), ")"),
+                                    add = paste0("(", jacobianSymb(f[statesNoVar], var), ") * (-", as.character(events[["value"]][i]), ")")),
+                     method = events[["method"]][i],
+                     stringsAsFactors = FALSE),
+          data.frame(var = paste(var, tvar, sep = "."),
+                     time = events[["time"]][i],
+                     value = switch(as.character(events[["method"]][i]),
+                                    replace = paste0("(", jacobianSymb(f[var], var), ") * (-", as.character(events[["value"]][i]), ")"),
+                                    add = paste0("(", jacobianSymb(f[var], var), ") * (-", as.character(events[["value"]][i]), ")")),
+                     method = events[["method"]][i],
+                     stringsAsFactors = FALSE)
+        )
+          
+      } 
+      # Events for sensitivities of state affected by event, second
+      if (length(eventpar) == 0) eventpar <- "-1"
+      parsNoTime <- setdiff(c(states, pars), tvar)
+      var.p  <- data.frame(var = paste(var, parsNoTime , sep = "."),
+                           time = events[["time"]][i],
+                           value = ifelse(parsNoTime == eventpar, 1, 0),
+                           method = events[["method"]][i],
+                           stringsAsFactors = FALSE)
+      
+      return(rbind(x.tvar, var.p))
+      
+    }))
+    events <- events.addon
+    rownames(events) <- NULL
+  }
+  
   # Reduce the sensitivities
-  vanishing <- c(sensParVariablesY0, sensParVariablesP[Dpf == "0"])
+  vanishing <- c(sensParVariablesY0[!(sensParVariablesY0 %in% as.character(events[["var"]][as.character(events[["value"]]) != "0"]))], 
+                 sensParVariablesP[Dpf == "0" & !(sensParVariablesP %in% as.character(events[["var"]][as.character(events[["value"]]) != "0"]))])
   if(reduce) {
     newfun <- reduceSensitivities(newfun, vanishing)
     is.zero.sens <- names(newfun) %in% attr(newfun,"is.zero")
   } else {
     is.zero.sens <- rep(FALSE, length(newfun))
   }
+  events <- events[!as.character(events[["var"]]) %in% names(newfun)[is.zero.sens], ]
   newfun <- newfun[!is.zero.sens]
-  
+  output.reduction <- structure(rep(0, length(which(is.zero.sens))), names = newvariables[is.zero.sens])
   
     
   # Append initial values
@@ -116,9 +191,10 @@ sensitivitiesSymb <- function(f, states = names(f), parameters = NULL, inputs = 
   
   attr(newfun, "chi") <- chi
   attr(newfun, "grad") <- grad
-  attr(newfun, "outputs") <- structure(rep(0, length(which(is.zero.sens))), names = newvariables[is.zero.sens])
+  attr(newfun, "outputs") <- output.reduction
   attr(newfun, "forcings") <- c(statesD, weightsD)
   attr(newfun, "yini") <- initials
+  attr(newfun, "events") <- events
   attr(newfun, "hasSensStatesIdx") <- hasSens.StatesIdx
   attr(newfun, "hasSensParametersIdx") <- hasSens.ParameterIdx
     

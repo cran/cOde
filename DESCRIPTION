@@ -2,14 +2,14 @@ Package: cOde
 Type: Package
 Title: Automated C Code Generation for 'deSolve', 'bvpSolve' and
         'Sundials'
-Version: 0.3
+Version: 0.4.1
 NeedsCompilation: yes
 Depends: R (>= 3.0)
 Suggests: deSolve, bvpSolve
 Imports: Rcpp (>= 0.11.3)
 LinkingTo: Rcpp, RcppArmadillo
 SystemRequirements: C++11
-Date: 2017-09-04
+Date: 2018-08-08
 Author: Daniel Kaschek
 Maintainer: Daniel Kaschek <daniel.kaschek@gmail.com>
 Description: Generates all necessary C functions allowing the user to work with
@@ -20,6 +20,6 @@ Description: Generates all necessary C functions allowing the user to work with
     implemented for computation of model sensitivities.
 License: GPL (>= 2)
 RoxygenNote: 6.0.1
-Packaged: 2017-08-29 09:16:48 UTC; kaschek
+Packaged: 2018-08-08 15:01:13 UTC; kaschek
 Repository: CRAN
-Date/Publication: 2017-09-07 21:44:06 UTC
+Date/Publication: 2018-08-08 15:40:06 UTC
