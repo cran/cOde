@@ -28,10 +28,10 @@
 #' additional forcings being necessare to compute \code{chi} and \code{grad}) and "yini" (
 #' The initial values of the sensitivity equations) are returned.
 #' @example inst/examples/example2.R
-#' @example inst/examples/example2_sundials.R
 #' @example inst/examples/example3.R
 #' @export
 sensitivitiesSymb <- function(f, states = names(f), parameters = NULL, inputs = NULL, events = NULL, reduce = FALSE) {
+  
   
   variables <- names(f)
   states <- states[!states%in%inputs]
@@ -87,69 +87,259 @@ sensitivitiesSymb <- function(f, states = names(f), parameters = NULL, inputs = 
   newvariables <- apply(newvariables.grid, 1, paste, collapse=".")
   names(newfun) <- newvariables
   
-  # Compute list of new events
-  # var.p, t_var, 0 (if replace or add)
-  # var.p_var, t_var, 1 (if replace or add)
-  # x.t_var, t_var, f.var (if replace or add)
-  events.addon <- NULL
+  
+  events.addon <- eventframe <- NULL
   if (!is.null(events)) {
-    events.addon <- do.call(rbind, lapply(1:nrow(events), function(i) {
-      # Get variable, time and value
-      var <- as.character(events[["var"]][i])
-      tvar <- intersect(getSymbols(as.character(events[["time"]][i])), parameters)
-      eventpar <- intersect(getSymbols(as.character(events[["value"]][i])), parameters)
-      # Events for sensitivities with respect to time parameter, first
-      x.tvar <- NULL
-      if (length(tvar) > 0) {
-        statesNoVar <- setdiff(states, var)
-        x.tvar <- rbind(
-          data.frame(var = paste(statesNoVar, tvar, sep = "."),
-                     time = events[["time"]][i],
-                     value = switch(as.character(events[["method"]][i]),
-                                    replace = paste0("(", jacobianSymb(f[statesNoVar], var), ") * (", as.character(events[["var"]][i]), " - ", as.character(events[["value"]][i]), ")"),
-                                    add = paste0("(", jacobianSymb(f[statesNoVar], var), ") * (-", as.character(events[["value"]][i]), ")")),
-                     method = events[["method"]][i],
-                     stringsAsFactors = FALSE),
-          data.frame(var = paste(var, tvar, sep = "."),
-                     time = events[["time"]][i],
-                     value = switch(as.character(events[["method"]][i]),
-                                    replace = paste0("(", jacobianSymb(f[var], var), ") * (-", as.character(events[["value"]][i]), ")"),
-                                    add = paste0("(", jacobianSymb(f[var], var), ") * (-", as.character(events[["value"]][i]), ")")),
-                     method = events[["method"]][i],
-                     stringsAsFactors = FALSE)
-        )
+    
+    events.addon <- lapply(1:nrow(events), function(i) {
+      
+      # A data frame representing the i'th event
+      myevent <- events[i,]
+      
+      # Get the info from the event
+      xone <- as.character(myevent[["var"]])
+      tau <- as.character(myevent[["time"]])
+      xi <- as.character(myevent[["value"]])
+      xk <- setdiff(variables, xone)
+      
+      
+      # Derive some quantities needed for all event methods
+      Ji1 <- jacobianSymb(f, variables = xone)
+      J11 <- Ji1[paste0(xone, ".", xone)]
+      Jk1 <- Ji1[paste0(xk, ".", xone)]
+      f1 <- f[xone]
+      fk <- f[xk]
+      
+      # Collect ODE parameters 
+      odepars <- c(states, pars)
+      
+      
+      # Generate additional events for **replacement event**
+      if (myevent[["method"]] == "replace") {
+        
+        
+        d <- list()
+        
+        vars <- intersect(paste0(xone, ".", odepars), newvariables)
+        if (length(vars) > 0) {
+          d[[1]] <- data.frame(
+            var = vars,
+            time = tau,
+            value = 0,
+            method = "replace"
+          )
+        }
+        
+        vars <- intersect(paste0(xone, ".", tau), newvariables)
+        if (length(vars) > 0) {
+          d[[2]] <- data.frame(
+            var = vars,
+            time = tau,
+            value = paste0("(", J11, ")*(", xone, "- (", xi, ")) - (", f1, ")"),
+            method = "add"
+          )
+        }
           
-      } 
-      # Events for sensitivities of state affected by event, second
-      if (length(eventpar) == 0) eventpar <- "-1"
-      parsNoTime <- setdiff(c(states, pars), tvar)
-      var.p  <- data.frame(var = paste(var, parsNoTime , sep = "."),
-                           time = events[["time"]][i],
-                           value = ifelse(parsNoTime == eventpar, 1, 0),
-                           method = events[["method"]][i],
-                           stringsAsFactors = FALSE)
+        vars <- intersect(paste0(xk, ".", tau), newvariables)
+        if (length(vars) > 0) {
+          d[[3]] <- data.frame(
+            var = vars,
+            time = tau,
+            value = paste0("(", Jk1, ")*(", xone, "- (", xi, "))"),
+            method = "add"
+          )
+        }
+        
+        vars <- intersect(paste0(xone, ".", xi), newvariables)
+        if (length(vars) > 0) {
+          d[[4]] <- data.frame(
+            var = vars,
+            time = tau,
+            value = 1,
+            method = "add"
+          )
+        }
+        
+        d[["stringsAsFactors"]] <- FALSE
+        
+        return(do.call(rbind, d))
+        
+        
+        
+      }
       
-      return(rbind(x.tvar, var.p))
+      # Generate additional events for **additive event**
+      else if (myevent[["method"]] == "add") {
+        
+        d <- list()
+        
+        vars <- intersect(paste0(xone, ".", odepars), newvariables)
+        if (length(vars) > 0) {
+          d[[1]] <- data.frame(
+            var = vars,
+            time = tau,
+            value = 0,
+            method = "add"
+          )
+        }
+        
+        vars <- intersect(paste0(xone, ".", tau), newvariables)
+        if (length(vars) > 0) {
+          d[[2]] <- data.frame(
+            var = vars,
+            time = tau,
+            value = paste0("-(", J11, ") * (", xi, ")"),
+            method = "add"
+          )
+        }
+        
+        vars <- intersect(paste0(xk, ".", tau), newvariables)
+        if (length(vars) > 0) {
+          d[[3]] <- data.frame(
+            var = vars,
+            time = tau,
+            value = paste0("-(", Jk1, ") * (", xi, ")"),
+            method = "add"
+          )
+        }
+        
+        vars <- intersect(paste0(xone, ".", xi), newvariables)
+        if (length(vars) > 0) {
+          d[[4]] <- data.frame(
+            var = vars,
+            time = tau,
+            value = 1,
+            method = "add"
+          )
+        }
+        
+        d[["stringsAsFactors"]] <- FALSE
+        
+        return(do.call(rbind, d))
+        
+        
+        
+      }
       
-    }))
+      # generate additional events for **multiplicative event**
+      else if (myevent[["method"]] == "multiply") {
+        
+        d <- list()
+        
+        vars <- intersect(paste0(xone, ".", odepars), newvariables)
+        if (length(vars) > 0) {
+          d[[1]] <- data.frame(
+            var = vars,
+            time = tau,
+            value = xi,
+            method = "multiply" 
+          )
+        }
+        
+        vars <- intersect(paste0(xone, ".", tau), newvariables)
+        if (length(vars) > 0) {
+          d[[2]] <- data.frame(
+            var = vars,
+            time = tau,
+            value = paste0("(1 - (", xi, "))*((", J11, ")*(", xone, ") - (", f1, "))"),
+            method = "add"
+          )
+        }
+        
+        vars <- intersect(paste0(xk, ".", tau), newvariables)
+        if (length(vars) > 0) {
+          d[[3]] <- data.frame(
+            var = vars,
+            time = tau,
+            value = paste0("(1 - (", xi, "))*((", Jk1, ")*(", xone, "))"),
+            method = "add"
+          )
+        }
+        
+        vars <- intersect(paste0(xone, ".", xi), newvariables)
+        if (length(vars) > 0) {
+          d[[4]] <- data.frame(
+            var = vars,
+            time = tau,
+            value = xone,
+            method = "add"
+          )
+        }
+        
+        d[["stringsAsFactors"]] <- FALSE
+        
+        
+        return(do.call(rbind, d))
+        
+        
+        
+      }
+      
+      else {
+        
+        stop("Event method must be either 'replace', 'add' or 'multiply'.")
+        
+      }
+      
+    })
+    
+    # Overwrite events
     events <- events.addon
-    rownames(events) <- NULL
+    
+    # Add rownames that allow to trace back records in eventframe to the list of events
+    for (i in seq_along(events)) {
+      rownames(events[[i]]) <- paste(i, seq_along(events[[i]][[1]]), sep = "_")
+    }
+    
+    # Make sure all columns are characters
+    eventframe <- do.call(rbind, events)
+    for (i in seq_along(eventframe)) {
+      eventframe[[i]] <- as.character(eventframe[[i]])
+    }
+    
+    
+    # Get (numeric) values in eventframe value column
+    symbols <- getSymbols(eventframe$value)
+    symbols.vals <- structure(stats::rnorm(length(symbols)), names = symbols)
+    values.char <- paste0("c(", paste(eventframe$value, collapse = ", "), ")")
+    values.vals <- with(as.list(symbols.vals), eval(parse(text = values.char)))
+    
+    # Get sensitivities which are initialized by 0 and do not change due to additional events
+    is_ini_zero <- sapply(strsplit(eventframe$var, ".", fixed = TRUE), function(x) x[1] != x[2])
+    var_reset_to_zero <- sapply(unique(eventframe$var[is_ini_zero]), function(myvar) {
+      all(values.vals[eventframe$var == myvar] == 0)
+    })
+    
+    # Determine records which can be removed from eventframe either because they are neutral or the variable can completely be removed
+    is_neutral <- (eventframe$method == "add" & values.vals == 0)
+    
+    # Reduce eventframe
+    eventframe <- eventframe[!is_neutral,]
+    
+    # Reduce events (by name matching)
+    events <- lapply(events, function(e) e[rownames(e) %in% rownames(eventframe), ])
+    
+    
   }
+ 
   
   # Reduce the sensitivities
-  vanishing <- c(sensParVariablesY0[!(sensParVariablesY0 %in% as.character(events[["var"]][as.character(events[["value"]]) != "0"]))], 
-                 sensParVariablesP[Dpf == "0" & !(sensParVariablesP %in% as.character(events[["var"]][as.character(events[["value"]]) != "0"]))])
+  #vanishing <- c(sensParVariablesY0[!(sensParVariablesY0 %in% eventframe[["var"]][eventframe[["value"]] != "0"])], 
+  #               sensParVariablesP[Dpf == "0" & !(sensParVariablesP %in% eventframe[["var"]][eventframe[["value"]] != "0"])])
+  vanishing <- setdiff(c(sensParVariablesY0, sensParVariablesP[Dpf == "0"]), eventframe[["var"]])
+  
   if(reduce) {
     newfun <- reduceSensitivities(newfun, vanishing)
     is.zero.sens <- names(newfun) %in% attr(newfun,"is.zero")
   } else {
     is.zero.sens <- rep(FALSE, length(newfun))
   }
-  events <- events[!as.character(events[["var"]]) %in% names(newfun)[is.zero.sens], ]
+  events <- lapply(events, function(myevents) {
+    myevents[!as.character(myevents[["var"]]) %in% names(newfun)[is.zero.sens], ]
+  })
   newfun <- newfun[!is.zero.sens]
   output.reduction <- structure(rep(0, length(which(is.zero.sens))), names = newvariables[is.zero.sens])
   
-    
   # Append initial values
   initials <- rep(0, length(newfun))
   names(initials) <- newvariables[!is.zero.sens]
